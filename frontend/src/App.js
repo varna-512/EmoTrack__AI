@@ -151,11 +151,15 @@ function App() {
   const [audioUrl, setAudioUrl] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [journal, setJournal] = useState("");
+  const [textEmotion, setTextEmotion] = useState("");
+  const [textTrigger, setTextTrigger] = useState("");
+  const [textIntensity, setTextIntensity] = useState(5);
+  const [textDuration, setTextDuration] = useState("");
+  
   const [pulse, setPulse] = useState(76);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortKey, setSortKey] = useState("date");
   const [filterStatus, setFilterStatus] = useState("All");
-  
   
   const [history, setHistory] = useState([]);
   const [dashboardData, setDashboardData] = useState(null);
@@ -289,7 +293,20 @@ function App() {
       if (imageFile) {
         formData.append("image", imageFile);
       }
+      const assessmentText = `
+      Primary Emotion: ${textEmotion}
+      Trigger: ${textTrigger}
+      Intensity: ${textIntensity}/10
+      Duration: ${textDuration}
 
+      Journal:
+      ${journal}
+      `;
+
+      formData.append("text", assessmentText);
+
+      console.log("TEXT SENT:");
+      console.log(assessmentText);
       const response = await fetch(`${API_BASE}/multimodal/predict/`, {
         method: "POST",
         body: formData,
@@ -299,6 +316,11 @@ function App() {
       console.log(data)
       console.log("VOICE", data.voice_result);
       console.log("FACE", data.face_result);
+      console.log("TEXT EMOTION:", textEmotion);
+      console.log("TEXT TRIGGER:", textTrigger);
+      console.log("TEXT INTENSITY:", textIntensity);
+      console.log("TEXT DURATION:", textDuration);
+      console.log("JOURNAL:", journal);      
       console.log("FINAL", data.final_result);
       setResult(data);
       await loadDatabaseData();
@@ -371,6 +393,17 @@ function App() {
                 audioUrl={audioUrl}
                 journal={journal}
                 setJournal={setJournal}
+                textEmotion={textEmotion}
+                setTextEmotion={setTextEmotion}
+
+                textTrigger={textTrigger}
+                setTextTrigger={setTextTrigger}
+
+                textIntensity={textIntensity}
+                setTextIntensity={setTextIntensity}
+
+                textDuration={textDuration}
+                setTextDuration={setTextDuration}
                 analyzeEmotion={analyzeEmotion}
                 pulse={pulse}
                 setPulse={setPulse}
@@ -733,6 +766,17 @@ function Assessment(props) {
     audioUrl,
     journal,
     setJournal,
+    textEmotion,
+    setTextEmotion,
+
+    textTrigger,
+    setTextTrigger,
+
+    textIntensity,
+    setTextIntensity,
+
+    textDuration,
+    setTextDuration,
     analyzeEmotion,
     pulse,
     setPulse,
@@ -774,7 +818,24 @@ function Assessment(props) {
             onNext={() => setStep(3)}
           />
         )}
-        {step === 3 && <TextStep journal={journal} setJournal={setJournal} onNext={() => setStep(4)} />}
+        {step === 3 && <TextStep
+          textEmotion={textEmotion}
+          setTextEmotion={setTextEmotion}
+
+          textTrigger={textTrigger}
+          setTextTrigger={setTextTrigger}
+
+          textIntensity={textIntensity}
+          setTextIntensity={setTextIntensity}
+
+          textDuration={textDuration}
+          setTextDuration={setTextDuration}
+
+          journal={journal}
+          setJournal={setJournal}
+
+          onNext={() => setStep(4)}
+        /> }
         {step === 4 && <ProcessingStep loading={loading} analyzeEmotion={analyzeEmotion} />}
         {step === 5 && (<ResultReport
         finalResult={finalResult}
@@ -973,43 +1034,208 @@ function VoiceStep({ isRecording, loading, startRecording, stopRecording, audioF
   );
 }
 
-function TextStep({ journal, setJournal, onNext }) {
-  return (
-    <div className="step-grid">
-      <div className="panel text-panel">
-        <p className="eyebrow">Step 4</p>
-        <h2>Text Analysis</h2>
-        <textarea
-          value={journal}
-          onChange={(event) => setJournal(event.target.value)}
-          maxLength={800}
-          placeholder="Write a few lines about how you feel right now..."
+function TextStep({
+  textEmotion,
+  setTextEmotion,
+
+  textTrigger,
+  setTextTrigger,
+
+  textIntensity,
+  setTextIntensity,
+
+  textDuration,
+  setTextDuration,
+
+  journal,
+  setJournal,
+
+  onNext
+  }) {
+  return ( <div className="step-grid"> <div className="panel text-panel">
+
+
+      <p className="eyebrow">Step 4</p>
+
+      <h2>AI Emotional Check-In</h2>
+
+      <div className="question-block">
+        <label>Primary Emotion</label>
+
+        <select
+          value={textEmotion}
+          onChange={(e) =>
+            setTextEmotion(e.target.value)
+          }
+        >
+          <option value="">
+            Select Emotion
+          </option>
+
+          <option value="happy">
+            Happy
+          </option>
+
+          <option value="sad">
+            Sad
+          </option>
+
+          <option value="angry">
+            Angry
+          </option>
+
+          <option value="anxious">
+            Anxious
+          </option>
+
+          <option value="neutral">
+            Neutral
+          </option>
+
+          <option value="exhausted">
+            Exhausted
+          </option>
+
+          <option value="frustrated">
+            Frustrated
+          </option>
+        </select>
+      </div>
+
+      <div className="question-block">
+        <label>
+          What influenced this feeling most?
+        </label>
+
+        <select
+          value={textTrigger}
+          onChange={(e) =>
+            setTextTrigger(e.target.value)
+          }
+        >
+          <option value="">
+            Select Trigger
+          </option>
+
+          <option value="Studies">
+            Studies
+          </option>
+
+          <option value="Work">
+            Work
+          </option>
+
+          <option value="Relationships">
+            Relationships
+          </option>
+
+          <option value="Family">
+            Family
+          </option>
+
+          <option value="Health">
+            Health
+          </option>
+
+          <option value="Finances">
+            Finances
+          </option>
+
+          <option value="Other">
+            Other
+          </option>
+        </select>
+      </div>
+
+      <div className="question-block">
+        <label>
+          How intense is this feeling?
+        </label>
+
+        <input
+          type="range"
+          min="1"
+          max="10"
+          value={textIntensity}
+          onChange={(e) =>
+            setTextIntensity(e.target.value)
+          }
         />
-        <div className="char-count">{journal.length}/800 characters</div>
-        <button className="primary-action full" onClick={onNext}>
-          Continue
-        </button>
+
+        <span className="intensity-value">
+          {textIntensity} / 10
+        </span>
       </div>
-      <div className="panel">
-        <p className="eyebrow">Emotion prompts</p>
-        <div className="prompt-list">
-          {prompts.map((prompt) => (
-            <button key={prompt} onClick={() => setJournal((text) => `${text}${text ? "\n" : ""}${prompt} `)}>
-              {prompt}
-            </button>
-          ))}
-        </div>
-        <div className="sentiment-meter">
-          <span>Sentiment</span>
-          <strong>Balanced</strong>
-          <div>
-            <i />
-          </div>
-        </div>
+
+      <div className="question-block">
+        <label>
+          How long have you felt this way?
+        </label>
+
+        <select
+          value={textDuration}
+          onChange={(e) =>
+            setTextDuration(e.target.value)
+          }
+        >
+          <option value="">
+            Select Duration
+          </option>
+
+          <option value="Few Minutes">
+            Few Minutes
+          </option>
+
+          <option value="Several Hours">
+            Several Hours
+          </option>
+
+          <option value="Today">
+            Today
+          </option>
+
+          <option value="Several Days">
+            Several Days
+          </option>
+
+          <option value="Weeks+">
+            Weeks+
+          </option>
+        </select>
       </div>
+
+      <div className="insight-card">
+        💡 Tell EmoTrack AI more about your situation.
+        The journal entry is the most important part
+        of the text analysis.
+      </div>
+
+      <textarea
+        value={journal}
+        onChange={(e) =>
+          setJournal(e.target.value)
+        }
+        maxLength={800}
+        placeholder="Describe what happened, how you are feeling, and what is on your mind today..."
+      />
+
+      <div className="char-count">
+        {journal.length}/800 characters
+      </div>
+
+      <button
+        className="primary-action full"
+        onClick={onNext}
+      >
+        Continue
+      </button>
+
     </div>
+  </div>
+
   );
-}
+  }
+
 
 function ProcessingStep({ loading, analyzeEmotion }) {
   const items = [

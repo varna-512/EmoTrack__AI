@@ -13,7 +13,6 @@ class AssessmentResult(models.Model):
 
     voice_confidence = models.FloatField()
 
-
     # =========================
     # FACE
     # =========================
@@ -24,6 +23,18 @@ class AssessmentResult(models.Model):
 
     face_confidence = models.FloatField()
 
+    # =========================
+    # TEXT
+    # =========================
+
+    text_emotion = models.CharField(
+        max_length=50,
+        default="No Data"
+    )
+
+    text_confidence = models.FloatField(
+        default=0
+    )
 
     # =========================
     # FINAL FUSION
@@ -37,7 +48,6 @@ class AssessmentResult(models.Model):
 
     stress_score = models.IntegerField()
 
-
     # =========================
     # TIMESTAMP
     # =========================
@@ -46,7 +56,9 @@ class AssessmentResult(models.Model):
         auto_now_add=True
     )
 
-
     def __str__(self):
 
-        return f"{self.final_emotion} - {self.stress_score}"
+        return (
+            f"{self.final_emotion} - "
+            f"{self.stress_score}"
+        )

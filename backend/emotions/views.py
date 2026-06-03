@@ -9,7 +9,7 @@ from .models import AssessmentResult
 from .services.face_service import get_face_prediction
 from .services.voice_service import get_voice_prediction
 from .services.fusion_service import fuse_emotions
-
+from .services.text_service import get_text_prediction
 
 def _percent(value):
     value = float(value or 0)
@@ -29,6 +29,14 @@ def _serialize_assessment(assessment):
         "dominant_emotion": assessment.face_emotion,
         "confidence": face_confidence,
     }
+    text_confidence = float(
+        assessment.text_confidence or 0
+    )
+
+    text_result = {
+        "dominant_emotion": assessment.text_emotion,
+        "confidence": text_confidence,
+    }
     final_result = {
         "final_emotion": assessment.final_emotion,
         "confidence": final_confidence,
@@ -43,12 +51,15 @@ def _serialize_assessment(assessment):
         "voice_confidence": voice_confidence,
         "face_emotion": assessment.face_emotion,
         "face_confidence": face_confidence,
+        "text_emotion": assessment.text_emotion,
+        "text_confidence": text_confidence,
         "final_emotion": assessment.final_emotion,
         "final_confidence": final_confidence,
         "confidence": final_confidence,
         "stress_score": assessment.stress_score,
         "voice_result": voice_result,
         "face_result": face_result,
+        "text_result": text_result,
         "final_result": final_result,
         "result": {
             "voice_result": voice_result,
@@ -71,6 +82,7 @@ class MultimodalPredictionAPIView(APIView):
         audio_file = request.FILES.get("audio")
 
         image_file = request.FILES.get("image")
+        text_input = request.data.get("text")
 
         print("\n====================")
         print("MULTIMODAL REQUEST")
@@ -78,15 +90,21 @@ class MultimodalPredictionAPIView(APIView):
 
         print("Audio File:", audio_file)
         print("Image File:", image_file)
+        print("Text:", text_input)
 
         # =========================
         # VALIDATION
         # =========================
 
-        if not audio_file and not image_file:
+        if not audio_file and not image_file and not text_input:
 
             return Response({
-
+"result": {
+    "voice_result": voice_result,
+    "face_result": face_result,
+    "text_result": text_result,
+    "final_result": final_result,
+},
                 "error":
                 "No audio or image uploaded"
 
@@ -99,6 +117,7 @@ class MultimodalPredictionAPIView(APIView):
         voice_result = {}
 
         face_result = {}
+        text_result = {}
 
         # =========================
         # VOICE
@@ -125,7 +144,19 @@ class MultimodalPredictionAPIView(APIView):
 
             print("\nFACE RESULT:")
             print(face_result)
+        # =========================
+        # text
+        # =========================
 
+        if text_input:
+
+            text_result = get_text_prediction(
+            text_input
+            )
+
+            print("\nTEXT RESULT:")
+            print(text_result)
+        
         # =========================
         # FUSION
         # =========================
@@ -134,7 +165,8 @@ class MultimodalPredictionAPIView(APIView):
 
             voice_result,
 
-            face_result
+            face_result,
+            text_result
 
         )
 
@@ -164,6 +196,15 @@ class MultimodalPredictionAPIView(APIView):
             "confidence",
             0
         )
+        text_emotion = text_result.get(
+               "dominant_emotion",
+               "No Data"
+        )
+
+        text_confidence = text_result.get(
+          "confidence",
+           0
+        )
 
         # =========================
         # SAVE TO DATABASE
@@ -178,6 +219,9 @@ class MultimodalPredictionAPIView(APIView):
             face_emotion=face_emotion,
 
             face_confidence=face_confidence,
+            text_emotion=text_emotion,
+
+            text_confidence=text_confidence,
 
             final_emotion=final_result["final_emotion"],
 
@@ -204,6 +248,8 @@ class MultimodalPredictionAPIView(APIView):
 
             "face_result":
             face_result,
+
+            "text_result": text_result,
 
             "final_result":
             final_result
@@ -240,7 +286,9 @@ class AssessmentHistoryAPIView(APIView):
 
                 "voice_emotion": item.voice_emotion,
 
-                "face_emotion": item.face_emotion
+                "face_emotion": item.face_emotion,
+
+                "text_emotion": item.text_emotion,
             })
 
         return Response(data)
@@ -331,6 +379,10 @@ class DashboardAPIView(APIView):
             {
                 "metric": "Voice",
                 "score": _percent(latest.voice_confidence),
+            },
+            {
+                "metric": "Text",
+                "score": _percent(latest.text_confidence),
             },
             {
                 "metric": "Fusion",

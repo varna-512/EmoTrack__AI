@@ -679,7 +679,78 @@ button {
   border: 1px solid var(--line);
   outline: none;
 }
+.question-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
 
+.question-block label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.question-block select {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.1);
+
+  background: #1b2438;
+  color: #ffffff;
+
+  font-size: 16px;
+  cursor: pointer;
+}
+.question-block select option {
+  background: #ffffff;
+  color: #111111;
+}
+
+.question-block select:focus {
+  outline: 2px solid rgba(0,255,255,0.3);
+}
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chip {
+  padding: 10px 14px;
+  border-radius: 999px;
+
+  border: 1px solid rgba(0,255,255,0.25);
+
+  background: rgba(255,255,255,0.04);
+
+  color: white;
+
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.chip:hover {
+  background: rgba(0,255,255,0.15);
+  transform: translateY(-2px);
+}
+
+.insight-card {
+  padding: 14px;
+  border-radius: 14px;
+  margin-bottom: 18px;
+  background: rgba(0,255,255,0.08);
+  border: 1px solid rgba(0,255,255,0.15);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.intensity-value {
+  font-size: 13px;
+  opacity: 0.75;
+}
 .char-count {
   margin-top: 8px;
   color: var(--muted);

@@ -2,7 +2,8 @@ def fuse_emotions(
 
     voice_result,
 
-    face_result
+    face_result,
+    text_result=None
 ):
 
     # =========================
@@ -23,12 +24,25 @@ def fuse_emotions(
         {}
     )
 
+    text_probs = {}
+
+    if text_result:
+
+     text_probs = text_result.get(
+       "emotion_probs",
+        {}
+    )
+
 
     # =========================
     # HANDLE NO DATA
     # =========================
 
-    if not voice_probs and not face_probs:
+    if (
+     not voice_probs and
+     not face_probs and
+     not text_probs
+    ):
 
         return {
 
@@ -51,10 +65,9 @@ def fuse_emotions(
     # =========================
 
     all_emotions = set(
-
-        list(voice_probs.keys()) +
-
-        list(face_probs.keys())
+     list(voice_probs.keys()) +
+     list(face_probs.keys()) +
+     list(text_probs.keys())
     )
 
 
@@ -80,15 +93,18 @@ def fuse_emotions(
 
             0
         )
+        text_score = text_probs.get(
+           emotion,
+           0
+        )
 
 
         # 50-50 weighting
 
         combined_score = (
-
-            voice_score * 0.5 +
-
-            face_score * 0.5
+             voice_score * 0.4 +
+             face_score * 0.4 +
+              text_score * 0.2
         )
 
 
