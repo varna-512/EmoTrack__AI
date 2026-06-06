@@ -151,6 +151,8 @@ function App() {
   const [audioUrl, setAudioUrl] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [journal, setJournal] = useState("");
+  const [typingStartTime, setTypingStartTime] = useState(null);
+  const [typingSpeed, setTypingSpeed] = useState(0);
   const [textEmotion, setTextEmotion] = useState("");
   const [textTrigger, setTextTrigger] = useState("");
   const [textIntensity, setTextIntensity] = useState(5);
@@ -293,15 +295,16 @@ function App() {
       if (imageFile) {
         formData.append("image", imageFile);
       }
-      const assessmentText = `
-      Primary Emotion: ${textEmotion}
-      Trigger: ${textTrigger}
-      Intensity: ${textIntensity}/10
-      Duration: ${textDuration}
+const assessmentText = `
+Primary Emotion: ${textEmotion}
+Trigger: ${textTrigger}
+Intensity: ${textIntensity}/10
+Duration: ${textDuration}
+Typing Speed: ${typingSpeed} WPM
 
-      Journal:
-      ${journal}
-      `;
+Journal:
+${journal}
+`;
 
       formData.append("text", assessmentText);
 
@@ -380,6 +383,10 @@ function App() {
               <Assessment
                 step={step}
                 setStep={goToStep}
+                typingStartTime={typingStartTime}
+                setTypingStartTime={setTypingStartTime}
+                typingSpeed={typingSpeed}
+                setTypingSpeed={setTypingSpeed}
                 isRecording={isRecording}
                 loading={loading}
                 cameraOn={cameraOn}
@@ -789,6 +796,10 @@ function Assessment(props) {
     emotionDistribution,
     modalityScores,
     wellnessMetrics,
+    typingStartTime,
+    setTypingStartTime,
+    typingSpeed,
+    setTypingSpeed,
   } = props;
 
   return (
@@ -833,6 +844,10 @@ function Assessment(props) {
 
           journal={journal}
           setJournal={setJournal}
+          typingStartTime={typingStartTime}
+          setTypingStartTime={setTypingStartTime}
+          typingSpeed={typingSpeed}
+          setTypingSpeed={setTypingSpeed}
 
           onNext={() => setStep(4)}
         /> }
@@ -1048,10 +1063,38 @@ function TextStep({
   setTextDuration,
 
   journal,
-  setJournal,
+ setJournal,
 
-  onNext
-  }) {
+typingStartTime,
+setTypingStartTime,
+typingSpeed,
+setTypingSpeed,
+
+onNext
+}) {
+
+  const handleTyping = (e) => {
+    const text = e.target.value;
+
+    if (!typingStartTime) {
+      setTypingStartTime(Date.now());
+    }
+
+    setJournal(text);
+
+    const elapsed =
+      (Date.now() - (typingStartTime || Date.now())) /
+      60000;
+
+    const words = text.trim().split(/\s+/).length;
+
+    if (elapsed > 0) {
+      setTypingSpeed(
+        Math.round(words / elapsed)
+      );
+    }
+  };
+
   return ( <div className="step-grid"> <div className="panel text-panel">
 
 
@@ -1211,17 +1254,36 @@ function TextStep({
       </div>
 
       <textarea
-        value={journal}
-        onChange={(e) =>
-          setJournal(e.target.value)
-        }
-        maxLength={800}
-        placeholder="Describe what happened, how you are feeling, and what is on your mind today..."
-      />
+  value={journal}
+  onChange={(e) => {
+    if (!typingStartTime) {
+      setTypingStartTime(Date.now());
+    }
+
+    setJournal(e.target.value);
+
+    const elapsed =
+      (Date.now() - typingStartTime) / 60000;
+
+    const words =
+      e.target.value.trim().split(/\s+/).length;
+
+    if (elapsed > 0) {
+      setTypingSpeed(
+        Math.round(words / elapsed)
+      );
+    }
+  }}
+  maxLength={800}
+  placeholder="Describe what happened, how you are feeling, and what is on your mind today..."
+/>
 
       <div className="char-count">
         {journal.length}/800 characters
       </div>
+      <div className="char-count">
+      Typing Speed: {typingSpeed} WPM
+       </div>
 
       <button
         className="primary-action full"
