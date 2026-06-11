@@ -513,7 +513,12 @@ function Topbar({ darkMode, setDarkMode }) {
   return (
     <header className="topbar">
       <div>
-        <p className="eyebrow">Sunday, May 31, 2026</p>
+        {new Date().toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })}
         <h1>EmoTrack AI</h1>
       </div>
       <div className="topbar-actions">
