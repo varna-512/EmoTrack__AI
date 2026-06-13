@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import MicRecorder from "mic-recorder-to-mp3";
 import Webcam from "react-webcam";
 
+
+
+
 import {
   Activity,
   BarChart3,
@@ -76,30 +79,25 @@ const navItems = [
 ];
 
 const steps = [
-  "Pulse Monitoring",
-  "Face Analysis",
-  "Voice Analysis",
-  "Text Analysis",
-  "AI Processing",
-  "Results",
-  "Recommendations",
+  "Start Assessment",
+  "Initial Wellness Check",
+  "Questionnaire",
+  "Processing",
+  "Wellness Report",
 ];
 
-const recommendations = [
-  { icon: Wind, title: "Mindfulness", description: "Three-minute grounding routine with breath pacing.", cta: "Begin" },
-  { icon: Brain, title: "Meditation", description: "Guided session tuned for post-assessment regulation.", cta: "Open" },
-  { icon: Music, title: "Music", description: "Low-tempo soundscape for recovery and focus.", cta: "Play" },
-  { icon: Dumbbell, title: "Exercise", description: "Light mobility sequence to reduce physical tension.", cta: "Start" },
-  { icon: Moon, title: "Sleep", description: "Evening wind-down checklist and sleep consistency goal.", cta: "Plan" },
-  { icon: Gauge, title: "Stress Management", description: "Identify triggers and choose a coping protocol.", cta: "Review" },
-  { icon: HeartPulse, title: "Social Wellness", description: "Nudge to connect with a trusted support person.", cta: "Schedule" },
-];
-
-const prompts = [
-  "What emotion has been most present today?",
-  "What felt heavy, and what felt supportive?",
-  "Describe one moment you want the AI to understand.",
-];
+const initialQuestionnaire = {
+  day_so_far: "",
+  stress_level: "",
+  thought_response: "",
+  sleep_quality: "",
+  energy_level: 5,
+  challenge_response: "",
+  motivation_level: "",
+  social_connectedness: "",
+  looking_forward: "",
+  improve_this_week: "",
+};
 
 function getFinalResult(result) {
   return result?.final_result || {};
@@ -115,10 +113,19 @@ function percent(value, fallback = 0) {
 }
 
 function emotionDistributionFromResult(finalResult, dashboardData) {
+  const dimensions = finalResult?.report?.wellness_dimensions || [];
+  if (dimensions.length) {
+    return dimensions.map((item, index) => ({
+      name: item.label,
+      value: percent(item.value),
+      color: ["#14b8a6", "#6366f1", "#f97316", "#64748b", "#22c55e"][index % 5],
+    }));
+  }
+
   const probabilities = finalResult?.final_probabilities || {};
   const colors = ["#14b8a6", "#6366f1", "#f97316", "#64748b", "#22c55e", "#ef4444"];
-  const distribution = Object.entries(probabilities).map(([name, value], index) => ({
-    name,
+  const distribution = Object.entries(probabilities).map(([, value], index) => ({
+    name: `Signal ${index + 1}`,
     value: percent(value),
     color: colors[index % colors.length],
   }));
@@ -131,6 +138,8 @@ function modalityScoresFromResult(faceResult, voiceResult, finalResult, dashboar
     return [
       { metric: "Face", score: percent(faceResult?.confidence) },
       { metric: "Voice", score: percent(voiceResult?.confidence) },
+      { metric: "Text", score: percent(finalResult?.text_confidence) },
+      { metric: "Questionnaire", score: percent(finalResult?.questionnaire_confidence ?? 0.75) },
       { metric: "Fusion", score: percent(finalResult?.confidence) },
     ];
   }
@@ -147,9 +156,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [result, setResult] = useState(null);
-  const [audioFile, setAudioFile] = useState(null);
-  const [audioUrl, setAudioUrl] = useState("");
-  const [imageFile, setImageFile] = useState(null);
+  const [audioFiles, setAudioFiles] = useState({});
+  const [audioUrls, setAudioUrls] = useState({});
+  const [recordingField, setRecordingField] = useState("");
+  const [faceFrames, setFaceFrames] = useState([]);
+  const [questionnaire, setQuestionnaire] = useState(initialQuestionnaire);
+  const [assessmentStartedAt, setAssessmentStartedAt] = useState(null);
   const [journal, setJournal] = useState("");
   const [typingStartTime, setTypingStartTime] = useState(null);
   const [typingSpeed, setTypingSpeed] = useState(0);
@@ -210,7 +222,7 @@ function App() {
   date: new Date(item.date)
     .toLocaleDateString(),
 
-  emotion: item.final_emotion,
+  priority: item.stress_score >= 70 ? "High" : item.stress_score >= 40 ? "Moderate" : "Low",
 
   wellness: Math.round(
     item.confidence * 100
@@ -221,12 +233,18 @@ function App() {
   status: "Complete"
 }));
   const webcamRef = useRef(null);
+  const frameIntervalRef = useRef(null);
   const finalResult = getFinalResult(result);
   const voiceResult = result?.voice_result || {};
   const faceResult = result?.face_result || {};
-  const primaryEmotion = finalResult.final_emotion || dashboardData?.latest_emotion || "N/A";
+  const currentReport = finalResult?.report || result?.report || {};
   const confidence = percent(finalResult.confidence ?? dashboardData?.latest_confidence);
   const stressScore = percent(finalResult.stress_score ?? dashboardData?.latest_stress);
+  const primaryEmotion = currentReport.priority_level || (
+    dashboardData?.total_assessments
+      ? stressScore >= 70 ? "High" : stressScore >= 40 ? "Moderate" : "Low"
+      : "Not available"
+  );
   const trendData = dashboardData?.trend_data || [];
   const emotionDistribution = emotionDistributionFromResult(finalResult, dashboardData);
   const modalityScores = modalityScoresFromResult(faceResult, voiceResult, finalResult, dashboardData);
@@ -235,7 +253,7 @@ function App() {
   const filteredReports = useMemo(() => {
     return reports
       .filter((report) => {
-        const matchesSearch = `${report.date} ${report.emotion} ${report.status}`
+        const matchesSearch = `${report.date} ${report.priority} ${report.status}`
           .toLowerCase()
           .includes(searchTerm.toLowerCase());
         const matchesStatus = filterStatus === "All" || report.status === filterStatus;
@@ -248,9 +266,37 @@ function App() {
       });
   }, [filterStatus, reports, searchTerm, sortKey]);
 
-  const startRecording = async () => {
+  useEffect(() => {
+    if (!cameraOn || activeView !== "assessment") {
+      return undefined;
+    }
+
+    const captureFrame = async () => {
+      try {
+        const imageSrc = webcamRef.current?.getScreenshot();
+        if (!imageSrc) return;
+        const blob = await fetch(imageSrc).then((res) => res.blob());
+        const file = new File([blob], `face-frame-${Date.now()}.jpg`, { type: "image/jpeg" });
+        setFaceFrames((frames) => [...frames, file]);
+      } catch (error) {
+        console.log(error);
+      }
+    };
+
+    captureFrame();
+    frameIntervalRef.current = setInterval(captureFrame, 10000);
+
+    return () => {
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+      }
+    };
+  }, [activeView, cameraOn]);
+
+  const startRecording = async (field) => {
     try {
       await recorder.start();
+      setRecordingField(field);
       setIsRecording(true);
     } catch (error) {
       console.log(error);
@@ -262,9 +308,11 @@ function App() {
       setLoading(true);
       const [, blob] = await recorder.stop().getMp3();
       setIsRecording(false);
-      const file = new File([blob], "voice.wav", { type: "audio/wav" });
-      setAudioFile(file);
-      setAudioUrl(URL.createObjectURL(blob));
+      const field = recordingField || "thought_response";
+      const file = new File([blob], `${field}.wav`, { type: "audio/wav" });
+      setAudioFiles((files) => ({ ...files, [field]: file }));
+      setAudioUrls((urls) => ({ ...urls, [field]: URL.createObjectURL(blob) }));
+      setRecordingField("");
       setLoading(false);
     } catch (error) {
       console.log(error);
@@ -274,13 +322,25 @@ function App() {
 
   const captureFace = async () => {
     try {
-      const imageSrc = webcamRef.current.getScreenshot();
+      const imageSrc = webcamRef.current?.getScreenshot();
+      if (!imageSrc) return;
       const blob = await fetch(imageSrc).then((res) => res.blob());
-      const file = new File([blob], "face.jpg", { type: "image/jpeg" });
-      setImageFile(file);
+      const file = new File([blob], `face-frame-${Date.now()}.jpg`, { type: "image/jpeg" });
+      setFaceFrames((frames) => [...frames, file]);
     } catch (error) {
       console.log(error);
     }
+  };
+
+  const startAssessment = () => {
+    setResult(null);
+    setFaceFrames([]);
+    setAudioFiles({});
+    setAudioUrls({});
+    setQuestionnaire(initialQuestionnaire);
+    setAssessmentStartedAt(new Date());
+    setCameraOn(true);
+    setStep(1);
   };
 
   const analyzeEmotion = async () => {
@@ -288,25 +348,31 @@ function App() {
       setLoading(true);
       const formData = new FormData();
 
-      if (audioFile) {
-        formData.append("audio", audioFile);
-      }
+      Object.values(audioFiles).forEach((file, index) => {
+        formData.append(`audio_${index + 1}`, file);
+      });
 
-      if (imageFile) {
-        formData.append("image", imageFile);
-      }
-const assessmentText = `
-Primary Emotion: ${textEmotion}
-Trigger: ${textTrigger}
-Intensity: ${textIntensity}/10
-Duration: ${textDuration}
+      faceFrames.forEach((file) => {
+        formData.append("images", file);
+      });
+
+      const assessmentText = `
+Day so far: ${questionnaire.day_so_far}
+Stress level recently: ${questionnaire.stress_level}
+Voice response 1 transcript prompt: ${questionnaire.thought_response}
+Sleep quality: ${questionnaire.sleep_quality}
+Energy level: ${questionnaire.energy_level}/10
+Voice response 2 transcript prompt: ${questionnaire.challenge_response}
+Motivation level: ${questionnaire.motivation_level}
+Social connectedness: ${questionnaire.social_connectedness}
+Looking forward to: ${questionnaire.looking_forward}
+Improve this week: ${questionnaire.improve_this_week}
 Typing Speed: ${typingSpeed} WPM
-
-Journal:
-${journal}
 `;
 
       formData.append("text", assessmentText);
+      formData.append("pulse", pulse);
+      formData.append("questionnaire", JSON.stringify(questionnaire));
 
       console.log("TEXT SENT:");
       console.log(assessmentText);
@@ -316,6 +382,10 @@ ${journal}
       });
 
       const data = await response.json();
+      console.log("FULL API RESPONSE", data);
+      console.log("FULL JSON");
+      console.log(JSON.stringify(data, null, 2));
+      console.log("RECOMMENDATIONS:", data.recommendations);
       console.log(data)
       console.log("VOICE", data.voice_result);
       console.log("FACE", data.face_result);
@@ -324,11 +394,15 @@ ${journal}
       console.log("TEXT INTENSITY:", textIntensity);
       console.log("TEXT DURATION:", textDuration);
       console.log("JOURNAL:", journal);      
-      console.log("FINAL", data.final_result);
+      console.log(
+  "FINAL RESULT",
+  JSON.stringify(finalResult, null, 2)
+);
       setResult(data);
       await loadDatabaseData();
       setLoading(false);
-      setStep(5);
+      setCameraOn(false);
+      setStep(4);
       setActiveView("results");
     } catch (error) {
       console.log(error);
@@ -393,11 +467,16 @@ ${journal}
                 setCameraOn={setCameraOn}
                 webcamRef={webcamRef}
                 captureFace={captureFace}
-                imageFile={imageFile}
                 startRecording={startRecording}
                 stopRecording={stopRecording}
-                audioFile={audioFile}
-                audioUrl={audioUrl}
+                audioFiles={audioFiles}
+                audioUrls={audioUrls}
+                recordingField={recordingField}
+                faceFrames={faceFrames}
+                assessmentStartedAt={assessmentStartedAt}
+                questionnaire={questionnaire}
+                setQuestionnaire={setQuestionnaire}
+                startAssessment={startAssessment}
                 journal={journal}
                 setJournal={setJournal}
                 textEmotion={textEmotion}
@@ -480,7 +559,7 @@ function Sidebar({ activeView, collapsed, onCollapse, onNavigate }) {
         {!collapsed && (
           <div>
             <strong>EmoTrack AI</strong>
-            <span>Clinical wellness intelligence</span>
+            <span>multimodal system</span>
           </div>
         )}
       </div>
@@ -513,12 +592,7 @@ function Topbar({ darkMode, setDarkMode }) {
   return (
     <header className="topbar">
       <div>
-        {new Date().toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}
+        <p className="eyebrow">Sunday, May 31, 2026</p>
         <h1>EmoTrack AI</h1>
       </div>
       <div className="topbar-actions">
@@ -578,7 +652,7 @@ function Dashboard({
   },
 
   {
-    label: "Emotional Stability",
+    label: "Wellness Stability",
 
     value:
       dashboardData?.emotional_stability || 0,
@@ -591,10 +665,10 @@ function Dashboard({
   },
 
   {
-    label: "Mood Trend",
+    label: "Wellness Trend",
 
     value:
-      dashboardData?.latest_emotion || "N/A",
+      dashboardData?.latest_stress >= 70 ? "High" : dashboardData?.latest_stress >= 40 ? "Moderate" : dashboardData?.total_assessments ? "Low" : "N/A",
 
     suffix: "",
 
@@ -624,7 +698,7 @@ function Dashboard({
       <section className="welcome-band">
         <div>
           <p className="eyebrow">Welcome back, Alex</p>
-          <h2>Your emotional status is {primaryEmotion === "N/A" ? "not available yet" : primaryEmotion.toLowerCase()}</h2>
+          <h2>Your latest wellness status is {primaryEmotion === "Not available" ? "not available yet" : `${primaryEmotion.toLowerCase()} priority`}</h2>
           <p>
             {dashboardData?.total_assessments
               ? `Last assessment showed ${confidence}% confidence with a ${stressScore}/100 stress score.`
@@ -634,7 +708,7 @@ function Dashboard({
         <div className="status-orbit">
           <HeartPulse size={32} />
           <strong>{primaryEmotion}</strong>
-          <span>Latest AI readout</span>
+          <span>Latest priority</span>
         </div>
       </section>
 
@@ -670,7 +744,7 @@ function Dashboard({
 
         <div className="panel ai-summary">
           <p className="eyebrow">AI wellness summary</p>
-          <h3>{dashboardData?.latest_emotion || "No saved readout yet"}</h3>
+          <h3>{dashboardData?.total_assessments ? "Latest report available" : "No saved report yet"}</h3>
           <p>
             {dashboardData?.total_assessments
               ? `Database average stress is ${dashboardData.average_stress}/100 across ${dashboardData.total_assessments} saved assessment${dashboardData.total_assessments === 1 ? "" : "s"}.`
@@ -679,36 +753,9 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="analytics-grid">
-        <ChartPanel title="Mood Trends">
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={trendData}>
-              <defs>
-                <linearGradient id="mood" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.45} />
-                  <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="day" />
-              <YAxis hide />
-              <Tooltip />
-              <Area type="monotone" dataKey="mood" stroke="#14b8a6" fill="url(#mood)" strokeWidth={3} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Stress Trends">
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="day" />
-              <YAxis hide />
-              <Tooltip />
-              <Line type="monotone" dataKey="stress" stroke="#f97316" strokeWidth={3} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Emotion Distribution">
+      <section className="eyebrow">
+        
+        <ChartPanel title="Wellness Signal Mix">
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={emotionDistribution} dataKey="value" innerRadius={54} outerRadius={82} paddingAngle={4}>
@@ -771,11 +818,15 @@ function Assessment(props) {
     setCameraOn,
     webcamRef,
     captureFace,
-    imageFile,
     startRecording,
     stopRecording,
-    audioFile,
-    audioUrl,
+    audioFiles,
+    audioUrls,
+    recordingField,
+    faceFrames,
+    questionnaire,
+    setQuestionnaire,
+    startAssessment,
     journal,
     setJournal,
     textEmotion,
@@ -811,53 +862,29 @@ function Assessment(props) {
     <div className="assessment-layout">
       <ProgressTracker step={step} setStep={setStep} />
       <section className="assessment-stage">
-        {step === 0 && <PulseStep pulse={pulse} setPulse={setPulse} onNext={() => setStep(1)} />}
-        {step === 1 && (
-          <FaceStep
+        {step === 0 && <StartAssessmentStep onStart={startAssessment} />}
+        {step === 1 && <PulseStep pulse={pulse} setPulse={setPulse} onNext={() => setStep(2)} />}
+        {step === 2 && (
+          <QuestionnaireStep
             cameraOn={cameraOn}
             setCameraOn={setCameraOn}
             webcamRef={webcamRef}
             captureFace={captureFace}
-            imageFile={imageFile}
-            onNext={() => setStep(2)}
-            faceResult={faceResult}
-          />
-        )}
-        {step === 2 && (
-          <VoiceStep
+            faceFrames={faceFrames}
+            questionnaire={questionnaire}
+            setQuestionnaire={setQuestionnaire}
             isRecording={isRecording}
             loading={loading}
+            recordingField={recordingField}
             startRecording={startRecording}
             stopRecording={stopRecording}
-            audioFile={audioFile}
-            audioUrl={audioUrl}
+            audioFiles={audioFiles}
+            audioUrls={audioUrls}
             onNext={() => setStep(3)}
           />
         )}
-        {step === 3 && <TextStep
-          textEmotion={textEmotion}
-          setTextEmotion={setTextEmotion}
-
-          textTrigger={textTrigger}
-          setTextTrigger={setTextTrigger}
-
-          textIntensity={textIntensity}
-          setTextIntensity={setTextIntensity}
-
-          textDuration={textDuration}
-          setTextDuration={setTextDuration}
-
-          journal={journal}
-          setJournal={setJournal}
-          typingStartTime={typingStartTime}
-          setTypingStartTime={setTypingStartTime}
-          typingSpeed={typingSpeed}
-          setTypingSpeed={setTypingSpeed}
-
-          onNext={() => setStep(4)}
-        /> }
-        {step === 4 && <ProcessingStep loading={loading} analyzeEmotion={analyzeEmotion} />}
-        {step === 5 && (<ResultReport
+        {step === 3 && <ProcessingStep loading={loading} analyzeEmotion={analyzeEmotion} />}
+        {step === 4 && (<ResultReport
         finalResult={finalResult}
        confidence={confidence}
        stressScore={stressScore}
@@ -869,7 +896,6 @@ function Assessment(props) {
       wellnessMetrics={wellnessMetrics}
       />
       )}
-        {step === 6 && <RecommendationGrid />}
       </section>
     </div>
   );
@@ -888,6 +914,40 @@ function ProgressTracker({ step, setStep }) {
   );
 }
 
+function StartAssessmentStep({ onStart }) {
+  return (
+    <div className="step-grid">
+      <div className="hero-panel">
+        <p className="eyebrow">Guided Emotional Wellness Assessment</p>
+        <h2>Start Assessment</h2>
+        <p>
+          Begin a guided check-in that combines pulse, camera observations, voice reflections,
+          questionnaire responses, and text analysis into one wellness report.
+        </p>
+        <button className="primary-action" onClick={onStart}>
+          <Play size={18} />
+          Start Assessment
+        </button>
+      </div>
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Assessment flow</p>
+            <h3>What will be captured</h3>
+          </div>
+          <ClipboardList size={22} />
+        </div>
+        <div className="processing-list">
+          <div><HeartPulse size={17} /> Initial pulse baseline</div>
+          <div><Camera size={17} /> Camera frames every 10 seconds</div>
+          <div><Volume2 size={17} /> Two voice reflections</div>
+          <div><FileText size={17} /> Questionnaire and written responses</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PulseStep({ pulse, setPulse, onNext }) {
   const pulseData = useMemo(
     () => Array.from({ length: 18 }, (_, index) => ({ label: index, value: pulse + Math.sin(index) * 8 })),
@@ -897,8 +957,8 @@ function PulseStep({ pulse, setPulse, onNext }) {
   return (
     <div className="step-grid">
       <div className="hero-panel">
-        <p className="eyebrow">Step 1</p>
-        <h2>Pulse Monitoring</h2>
+        <p className="eyebrow">Initial Wellness Check</p>
+        <h2>Pulse Baseline</h2>
         <p>Capture a quick baseline before the multimodal AI assessment begins.</p>
         <div className="heart-animation">
           <HeartPulse size={42} />
@@ -910,18 +970,215 @@ function PulseStep({ pulse, setPulse, onNext }) {
           <strong>{pulse} BPM</strong>
           <input type="range" min="58" max="112" value={pulse} onChange={(event) => setPulse(event.target.value)} />
         </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={pulseData}>
-            <XAxis dataKey="label" hide />
-            <YAxis hide />
-            <Tooltip />
-            <Line dataKey="value" stroke="#ef4444" strokeWidth={3} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
+        
         <button className="primary-action full" onClick={onNext}>
           Continue
         </button>
       </div>
+    </div>
+  );
+}
+
+function QuestionnaireStep({
+  cameraOn,
+  setCameraOn,
+  webcamRef,
+  captureFace,
+  faceFrames,
+  assessmentStartedAt,
+  questionnaire,
+  setQuestionnaire,
+  isRecording,
+  loading,
+  recordingField,
+  startRecording,
+  stopRecording,
+  audioFiles,
+  audioUrls,
+  onNext,
+}) {
+  const updateAnswer = (field, value) => {
+    setQuestionnaire((answers) => ({ ...answers, [field]: value }));
+  };
+  const requiredComplete = [
+    "day_so_far",
+    "stress_level",
+    "sleep_quality",
+    "motivation_level",
+    "social_connectedness",
+    "looking_forward",
+    "improve_this_week",
+  ].every((field) => String(questionnaire[field] || "").trim());
+  const voiceComplete = audioFiles.thought_response && audioFiles.challenge_response;
+
+  return (
+    <div className="questionnaire-layout">
+      <div className="panel camera-panel monitoring-panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Facial Monitoring Active</p>
+            <h2>Live Webcam Preview</h2>
+          </div>
+          <Camera size={22} />
+        </div>
+        {cameraOn ? (
+          <div className="camera-frame compact">
+            <Webcam audio={false} ref={webcamRef} mirrored={true} screenshotFormat="image/jpeg" className="webcam" />
+            <div className="face-overlay" />
+          </div>
+        ) : (
+          <button className="primary-action" onClick={() => setCameraOn(true)}>
+            <Camera size={18} />
+            Resume Camera
+          </button>
+        )}
+        <div className="button-row">
+          <button className="secondary-action" onClick={captureFace} disabled={!cameraOn}>
+            Capture Now
+          </button>
+        </div>
+        <div className="monitoring-stats">
+          <div>
+            <span>Frames Captured</span>
+            <strong>{faceFrames.length}</strong>
+          </div>
+          <div>
+            <span>Session Start Time</span>
+            <strong>{assessmentStartedAt ? assessmentStartedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel text-panel question-scroll-panel">
+        <QuestionSelect
+          label="Q1 How do you describe yor day so far?"
+          value={questionnaire.day_so_far}
+          options={["Excellent", "Good", "Average", "Difficult", "Very Difficult"]}
+          onChange={(value) => updateAnswer("day_so_far", value)}
+        />
+        <QuestionSelect
+          label="Q2 How stressed have you felt recently?"
+          value={questionnaire.stress_level}
+          options={["Not At All", "Slightly", "Moderately", "Very", "Extremely"]}
+          onChange={(value) => updateAnswer("stress_level", value)}
+        />
+        <VoiceQuestion
+          label="Q3 Voice Response: Tell us about something occupying your thoughts recently."
+          field="thought_response"
+          isRecording={isRecording}
+          loading={loading}
+          recordingField={recordingField}
+          startRecording={startRecording}
+          stopRecording={stopRecording}
+          audioUrl={audioUrls.thought_response}
+        />
+        <QuestionSelect
+          label="Q4 How would you rate your sleep quality?"
+          value={questionnaire.sleep_quality}
+          options={["Excellent", "Good", "Average", "Poor", "Very Poor"]}
+          onChange={(value) => updateAnswer("sleep_quality", value)}
+        />
+        <div className="question-block">
+          <label>Q5 Energy level</label>
+          <input
+            type="range"
+            min="0"
+            max="10"
+            value={questionnaire.energy_level}
+            onChange={(event) => updateAnswer("energy_level", event.target.value)}
+          />
+          <span className="intensity-value">{questionnaire.energy_level} / 10</span>
+        </div>
+        <VoiceQuestion
+          label="Q6 Voice Response: Describe a recent challenge you faced."
+          field="challenge_response"
+          isRecording={isRecording}
+          loading={loading}
+          recordingField={recordingField}
+          startRecording={startRecording}
+          stopRecording={stopRecording}
+          audioUrl={audioUrls.challenge_response}
+        />
+        <QuestionSelect
+          label="Q7 How motivated have felt recently?"
+          value={questionnaire.motivation_level}
+          options={["Very High", "High", "Moderate", "Low", "Very Low"]}
+          onChange={(value) => updateAnswer("motivation_level", value)}
+        />
+        <QuestionSelect
+          label="Q8 How connected do you feel to people around you?"
+          value={questionnaire.social_connectedness}
+          options={["Very Connected", "Connected", "Neutral", "Disconnected", "Very Disconnected"]}
+          onChange={(value) => updateAnswer("social_connectedness", value)}
+        />
+        <TextQuestion
+          label="Q9 What are you looking forward to?"
+          placeholder="Example: I'm looking forward to completing my project presentation and spending time with my family this weekend."
+          value={questionnaire.looking_forward}
+          onChange={(value) => updateAnswer("looking_forward", value)}
+        />
+        <TextQuestion
+          label="Q10 If you could improve one thing this week, what would it be?"
+          value={questionnaire.improve_this_week}
+          onChange={(value) => updateAnswer("improve_this_week", value)}
+        />
+        <button className="primary-action full" onClick={onNext} disabled={!requiredComplete || !voiceComplete}>
+          Continue to Processing
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function QuestionSelect({ label, value, options, onChange }) {
+  return (
+    <div className="question-block">
+      <label>{label}</label>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Select</option>
+        {options.map((option) => (
+          <option value={option} key={option}>{option}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function TextQuestion({ label, value, onChange }) {
+  return (
+    <div className="question-block">
+      <label>{label}</label>
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} maxLength={500} />
+    </div>
+  );
+}
+
+function VoiceQuestion({
+  label,
+  field,
+  isRecording,
+  loading,
+  recordingField,
+  startRecording,
+  stopRecording,
+  audioUrl,
+}) {
+  const active = isRecording && recordingField === field;
+  return (
+    <div className="question-block voice-question">
+      <label>{label}</label>
+      <div className="button-row">
+        <button
+          className={active ? "mic-inline recording" : "mic-inline"}
+          onClick={active ? stopRecording : () => startRecording(field)}
+          disabled={isRecording && !active}
+        >
+          <Volume2 size={18} />
+          {active ? "Stop Recording" : audioUrl ? "Record Again" : "Record Response"}
+        </button>
+        <span className="muted">{active ? "Recording..." : loading ? "Saving..." : audioUrl ? "Saved" : "Not recorded"}</span>
+      </div>
+      {audioUrl && <audio controls src={audioUrl} className="audio-player" />}
     </div>
   );
 }
@@ -1108,7 +1365,7 @@ onNext
       <h2>AI Emotional Check-In</h2>
 
       <div className="question-block">
-        <label>Primary Emotion</label>
+        <label>How do you describe your current status of emotion</label>
 
         <select
           value={textEmotion}
@@ -1305,36 +1562,94 @@ onNext
 
 
 function ProcessingStep({ loading, analyzeEmotion }) {
-  const items = [
-    "Pulse Analysis Complete",
-    "Face Analysis Complete",
-    "Voice Analysis Complete",
-    "Text Analysis Complete",
-    "Fusion Complete",
-    "Recommendation Engine Complete",
+  const [started, setStarted] = useState(false);
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  const messages = [
+    "Averaging captured camera frames...",
+    "Averaging both voice responses...",
+    "Evaluating questionnaire responses...",
+    "Including pulse baseline...",
+    "Fusing wellness signals...",
+    "Generating your wellness report...",
   ];
+
+  useEffect(() => {
+    if (!started || !loading) return;
+
+    const interval = setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % messages.length);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [started, loading]);
+
+  const handleFusionAnalysis = async () => {
+    setStarted(true);
+    await analyzeEmotion();
+  };
 
   return (
     <div className="processing-screen">
-      <motion.div className="processing-core" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 8, ease: "linear" }}>
-        <Brain size={42} />
+      <motion.div
+        className="processing-core"
+        animate={
+          started && loading
+            ? {
+                rotate: 360,
+                scale: [1, 1.08, 1],
+              }
+            : {}
+        }
+        transition={{
+          rotate: {
+            repeat: Infinity,
+            duration: 6,
+            ease: "linear",
+          },
+          scale: {
+            repeat: Infinity,
+            duration: 2,
+          },
+        }}
+      >
+        <Brain size={52} />
       </motion.div>
-      <h2>AI Processing</h2>
-      <p>Combining multimodal signals into one clinical-grade wellness readout.</p>
-      <div className="processing-list">
-        {items.map((item) => (
-          <div key={item}>
-            <CheckCircle2 size={18} />
-            <span>{item}</span>
-          </div>
-        ))}
-      </div>
-      <button className="primary-action" onClick={analyzeEmotion} disabled={loading}>
-        {loading ? "Analyzing..." : "Run Fusion Analysis"}
+
+      <h2>
+        {started && loading
+          ? "Generating Wellness Report"
+          : "Processing"}
+      </h2>
+
+      {started && loading ? (
+        <>
+          <p className="processing-message">
+            {messages[messageIndex]}
+          </p>
+
+          <p className="processing-subtitle">
+            Building your wellness profile from available inputs.
+          </p>
+        </>
+      ) : (
+        <p>
+          Combine pulse, camera, voice, text, and questionnaire inputs into a unified
+          wellness assessment.
+        </p>
+      )}
+
+      <button
+        className="primary-action"
+        onClick={handleFusionAnalysis}
+        disabled={loading}
+      >
+        {loading ? "Calculating..." : "Generate Wellness Report"}
       </button>
     </div>
   );
 }
+
 
 function ResultsAndRecommendations({
   finalResult,
@@ -1347,8 +1662,15 @@ function ResultsAndRecommendations({
   modalityScores,
   wellnessMetrics,
 }) {
+
+  const recommendations =
+    finalResult?.report?.personalized_recommendations ||
+    finalResult?.recommendations ||
+    [];
+
   return (
     <div className="stack">
+
       <ResultReport
         finalResult={finalResult}
         confidence={confidence}
@@ -1360,11 +1682,14 @@ function ResultsAndRecommendations({
         modalityScores={modalityScores}
         wellnessMetrics={wellnessMetrics}
       />
-      <RecommendationGrid />
+
+      <RecommendationGrid
+        recommendations={recommendations}
+      />
+
     </div>
   );
 }
-
 function ResultReport({
 
  finalResult,
@@ -1385,36 +1710,58 @@ function ResultReport({
 
  wellnessMetrics
 }) {
-  const emotion = finalResult.final_emotion || dashboardData?.latest_emotion || "N/A";
-  const scores = modalityScores?.length
-    ? modalityScores
-    : modalityScoresFromResult(faceResult, voiceResult, finalResult, dashboardData);
-  const metrics = wellnessMetrics?.length
-    ? wellnessMetrics
-    : [
-        { label: "Stress Score", value: stressScore },
-        { label: "Wellness Score", value: Math.max(0, 100 - stressScore) },
-      ];
+  const report = finalResult?.report || {};
+  const hasReport = Boolean(report.overall_assessment);
+  const priority = report.priority_level || "Not available";
+  const wellnessScore = report.wellness_score;
+  const overallAssessment = report.overall_assessment || "No backend report is available for this assessment.";
+  const observations = report.key_observations || [];
+  const attentionAreas = report.areas_requiring_attention || [];
+  const dimensions = report.wellness_dimensions || [];
 
   return (
     <div className="stack">
       <section className="report-hero">
         <div>
-          <p className="eyebrow">Final emotion</p>
-          <h2>{emotion}</h2>
-          <p>Confidence score: {confidence}%</p>
+          <p className="eyebrow">Overall Assessment</p>
+          <h2>AI Powered Multimodal Insights</h2>
+          <p>{overallAssessment}</p>
         </div>
-        <div className="confidence-ring" style={{ "--score": `${confidence}%` }}>
-          <strong>{confidence}%</strong>
-          <span>Confidence</span>
+        <div className="confidence-ring" style={{ "--score": `${Number(wellnessScore || 0)}%` }}>
+          <strong>{hasReport ? wellnessScore : "--"}</strong>
+          <span>Wellness Score</span>
         </div>
       </section>
 
       <section className="analytics-grid two">
-        <ChartPanel title="Fusion Analysis">
-          <ResponsiveContainer width="100%" height={260}>
+        <div className="panel">
+          <p className="eyebrow">Key Observations</p>
+          <div className="observation-grid">
+            {observations.map((item) => (
+              <div className="observation-card" key={item}>{item}</div>
+            ))}
+            {!observations.length && <p className="muted">No backend observations returned.</p>}
+          </div>
+        </div>
+        <div className="panel">
+          <p className="eyebrow">Areas Requiring Attention</p>
+          <div className="observation-grid">
+            {attentionAreas.map((item, index) => (
+              <div className="observation-card attention" key={index}>
+                <h4>{item.area}</h4>
+                <p>{item.description}</p>
+              </div>
+            ))}
+            {!attentionAreas.length && <p className="muted">No backend attention areas returned.</p>}
+          </div>
+        </div>
+      </section>
+
+      <section className="panel">
+        <p className="eyebrow">Wellness Dimension scores</p>
+        <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={emotionDistribution || []} dataKey="value" innerRadius={62} outerRadius={94}>
+              <Pie data={emotionDistribution} dataKey="value" innerRadius={54} outerRadius={82}>
                 {emotionDistribution.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
@@ -1422,82 +1769,45 @@ function ResultReport({
               <Tooltip />
             </PieChart>
           </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Modality Radar">
-          <ResponsiveContainer width="100%" height={260}>
-            <RadarChart data={scores}>
-              <PolarGrid />
-              <PolarAngleAxis dataKey="metric" />
-              <PolarRadiusAxis angle={30} domain={[0, 100]} />
-              <Radar dataKey="score" stroke="#6366f1" fill="#6366f1" fillOpacity={0.35} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-      </section>
-
-      <section className="kpi-grid">
-
-  {scores.map(({ metric, score }) => (
-
-    <div
-      className="contribution-card"
-      key={metric}
-    >
-
-      <span>{metric}</span>
-
-      <strong>{score}%</strong>
-
-      <div>
-
-        <i
-          style={{
-            width: `${score}%`
-          }}
-        />
-
-      </div>
-
-    </div>
-
-  ))}
-
-</section>
-
-      <section className="wellness-grid">
-        {metrics.map(({ label, value }) => (
-          <div className="wellness-metric" key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </div>
-        ))}
+        
       </section>
     </div>
   );
 }
 
-function RecommendationGrid() {
+function RecommendationGrid({ recommendations = [] }) {
+
   return (
     <section className="panel">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Recommendations</p>
-          <h3>Personalized next best actions</h3>
-        </div>
-      </div>
-      <div className="recommendation-grid">
-        {recommendations.map((item) => {
-          const Icon = item.icon;
-          return (
-            <article className="recommendation-card" key={item.title}>
-              <Icon size={22} />
+
+      <h3>Personalized Recommendations</h3>
+
+      {recommendations.length === 0 ? (
+        <p>No recommendations available.</p>
+      ) : (
+        <div className="recommendation-grid">
+          {recommendations.map((item, index) => (
+            <div key={index} className="recommendation-card">
+
+              <span className="recommendation-category">
+                {item.category}
+              </span>
+
               <h4>{item.title}</h4>
+
               <p>{item.description}</p>
-              <button>{item.cta}</button>
-            </article>
-          );
-        })}
-      </div>
+
+              {item.reason && (
+                <p className="recommendation-reason">
+                  <strong>Reason:</strong> {item.reason}
+                </p>
+              )}
+
+            </div>
+          ))}
+        </div>
+      )}
+
     </section>
   );
 }
@@ -1543,13 +1853,13 @@ function Insights({ trendData, emotionDistribution }) {
           <h3>Patterns worth watching</h3>
           <p className="muted">
             {trendData?.length
-              ? `Latest saved assessment is ${trendData[trendData.length - 1].emotion} with a ${trendData[trendData.length - 1].stress}/100 stress score.`
+              ? `Latest saved assessment has a ${trendData[trendData.length - 1].stress}/100 stress score.`
               : "Run assessments to generate database-backed insights."}
           </p>
         </div>
       </section>
       <section className="analytics-grid two">
-        <ChartPanel title="Mood History">
+        <ChartPanel title="Wellness History">
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={trendData}>
               <XAxis dataKey="day" />
@@ -1559,7 +1869,7 @@ function Insights({ trendData, emotionDistribution }) {
             </LineChart>
           </ResponsiveContainer>
         </ChartPanel>
-        <ChartPanel title="Emotion Distribution">
+        <ChartPanel title="Wellness Signal Mix">
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={emotionDistribution} dataKey="value" innerRadius={54} outerRadius={82}>
@@ -1605,7 +1915,7 @@ function Reports({ reports, searchTerm, setSearchTerm, sortKey, setSortKey, filt
           <thead>
             <tr>
               <th>Date</th>
-              <th>Emotion</th>
+              <th>Priority</th>
               <th>Wellness Score</th>
               <th>Stress Score</th>
               <th>Status</th>
@@ -1614,9 +1924,9 @@ function Reports({ reports, searchTerm, setSearchTerm, sortKey, setSortKey, filt
           </thead>
           <tbody>
             {reports.map((report) => (
-              <tr key={report.id || `${report.rawDate}-${report.emotion}`}>
+              <tr key={report.id || `${report.rawDate}-${report.priority}`}>
                 <td>{report.date}</td>
-                <td>{report.emotion}</td>
+                <td>{report.priority}</td>
                 <td>{report.wellness}</td>
                 <td>{report.stress}</td>
                 <td>
@@ -1638,7 +1948,7 @@ function Goals() {
   return (
     <div className="goals-grid">
       {[
-        ["Daily Mood Check-In", "5 of 7 days complete", CalendarDays],
+        ["Daily Wellness Check-In", "5 of 7 days complete", CalendarDays],
         ["Wellness Streaks", "12 day active streak", Flame],
         ["Achievement Badges", "Calm week unlocked", Sparkles],
         ["Goal Tracking", "Sleep consistency at 78%", Target],
@@ -1672,7 +1982,7 @@ function Profile() {
         <p>Patient wellness profile</p>
       </div>
       {[
-        ["User Information", "Age, care preferences, baseline mood"],
+        ["User Information", "Age, care preferences, baseline wellness"],
         ["Wellness Statistics", "24 assessments, 86 average score"],
         ["Connected Devices", "Wearable pulse monitor connected"],
         ["Notification Preferences", "Daily check-in and weekly report"],
