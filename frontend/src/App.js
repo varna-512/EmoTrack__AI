@@ -1845,14 +1845,7 @@ function Insights({ trendData, emotionDistribution }) {
         </ChartPanel>
       </section>
       <section className="insights-grid">
-        <div className="panel">
-          <p className="eyebrow">Calendar heatmap</p>
-          <div className="heatmap">
-            {Array.from({ length: 35 }, (_, index) => (
-              <span key={index} className={`heat-${index % 5}`} />
-            ))}
-          </div>
-        </div>
+        
         <div className="panel">
           <p className="eyebrow">AI insights</p>
           <h3>Patterns worth watching</h3>
@@ -1864,28 +1857,6 @@ function Insights({ trendData, emotionDistribution }) {
         </div>
       </section>
       <section className="analytics-grid two">
-        <ChartPanel title="Wellness History">
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={trendData}>
-              <XAxis dataKey="day" />
-              <YAxis hide />
-              <Tooltip />
-              <Line dataKey="mood" stroke="#22c55e" strokeWidth={3} />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Wellness Signal Mix">
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={emotionDistribution} dataKey="value" innerRadius={54} outerRadius={82}>
-                {emotionDistribution.map((entry) => (
-                  <Cell key={entry.name} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartPanel>
       </section>
     </div>
   );
@@ -1901,19 +1872,12 @@ function Reports({ reports, searchTerm, setSearchTerm, sortKey, setSortKey, filt
         </div>
         <select value={sortKey} onChange={(event) => setSortKey(event.target.value)}>
           <option value="date">Sort by date</option>
-          <option value="wellness">Sort by wellness</option>
-          <option value="stress">Sort by stress</option>
         </select>
         <select value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
           <option>All</option>
           <option>Complete</option>
           <option>Reviewed</option>
-          <option>Flagged</option>
         </select>
-        <button className="secondary-action">
-          <Download size={17} />
-          Export PDF
-        </button>
       </div>
       <div className="report-table">
         <table>
@@ -1983,15 +1947,14 @@ function Profile() {
     <div className="profile-grid">
       <div className="panel profile-card">
         <div className="avatar">V</div>
-        <h2>Alex</h2>
-        <p>Patient wellness profile</p>
+        <h2>varsha</h2>
+ <p>🟢 Active User</p>
+
       </div>
       {[
-        ["User Information", "Age, care preferences, baseline wellness"],
+        ["User Information", "Age: 21 • Student • Active User"],
         ["Wellness Statistics", "24 assessments, 86 average score"],
-        ["Connected Devices", "Wearable pulse monitor connected"],
-        ["Notification Preferences", "Daily check-in and weekly report"],
-        ["Privacy Settings", "Encrypted health data controls"],
+        
       ].map(([title, detail]) => (
         <div className="panel" key={title}>
           <h3>{title}</h3>
@@ -2006,20 +1969,41 @@ function Profile() {
 
 function Help() {
   return (
-    <div className="help-grid">
-      <div className="panel">
-        <p className="eyebrow">Help & Support</p>
-        <h2>Care team support center</h2>
-        <p className="muted">Find guidance for assessments, reports, privacy, and device connections.</p>
-      </div>
-      <div className="emergency-card">
-        <ShieldAlert size={24} />
-        <div>
-          <h3>Emergency Support</h3>
-          <p>If you may harm yourself or someone else, seek immediate emergency help now.</p>
-        </div>
-      </div>
+<div className="help-grid">
+
+  <div className="panel">
+    <p className="eyebrow">Help & Support</p>
+    <h2>Care Team Support Center</h2>
+    <p className="muted">
+      Get assistance with assessments, reports, recommendations and account settings.
+    </p>
+  </div>
+
+  <div className="panel">
+    <h3>📞 Phone Support</h3>
+    <p className="muted">+91 XXXXXXXXXX</p>
+    <p>Available 24/7 for urgent assistance.</p>
+  </div>
+
+  <div className="panel">
+    <h3>📧 Email Support</h3>
+    <p className="muted">support@emotrackai.com</p>
+    <p>Response within 24 hours.</p>
+  </div>
+
+ 
+
+  <div className="emergency-card">
+    <ShieldAlert size={24} />
+    <div>
+      <h3>Emergency Support</h3>
+      <p>
+        If you may harm yourself or someone else, seek immediate emergency help now.
+      </p>
     </div>
+  </div>
+
+</div>
   );
 }
 
