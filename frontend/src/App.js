@@ -74,7 +74,7 @@ const navItems = [
   { id: "reports", label: "Reports History", icon: FileText },
   { id: "goals", label: "Wellness Goals", icon: Target },
   { id: "profile", label: "Profile", icon: User },
-  { id: "settings", label: "Settings", icon: Settings },
+ 
   { id: "help", label: "Help & Support", icon: HelpCircle },
 ];
 
@@ -538,7 +538,7 @@ Typing Speed: ${typingSpeed} WPM
             )}
             {activeView === "goals" && <Goals />}
             {activeView === "profile" && <Profile />}
-            {activeView === "settings" && <SettingsView />}
+           
             {activeView === "help" && <Help />}
           </motion.section>
         </AnimatePresence>
@@ -592,13 +592,18 @@ function Topbar({ darkMode, setDarkMode }) {
   return (
     <header className="topbar">
       <div>
-        <p className="eyebrow">Sunday, May 31, 2026</p>
+        <p className="eyebrow">
+          {new Date().toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </p>
         <h1>EmoTrack AI</h1>
       </div>
       <div className="topbar-actions">
-        <button className="icon-button" aria-label="Notifications">
-          <Bell size={18} />
-        </button>
+       
         <button className="mode-toggle" onClick={() => setDarkMode((value) => !value)}>
           {darkMode ? <Moon size={17} /> : <Sparkles size={17} />}
           <span>{darkMode ? "Dark" : "Light"}</span>
@@ -1997,27 +2002,7 @@ function Profile() {
   );
 }
 
-function SettingsView() {
-  return (
-    <div className="settings-grid">
-      {[
-        ["Clinical Data Privacy", "Manage consent, storage, and sharing.", Lock],
-        ["Notifications", "Tune alerts and wellness reminders.", Bell],
-        ["Assistant Preferences", "Personalize tone and support depth.", Brain],
-      ].map(([title, detail, Icon]) => (
-        <div className="panel settings-card" key={title}>
-          <Icon size={22} />
-          <h3>{title}</h3>
-          <p className="muted">{detail}</p>
-          <label className="switch">
-            <input type="checkbox" defaultChecked />
-            <span />
-          </label>
-        </div>
-      ))}
-    </div>
-  );
-}
+
 
 function Help() {
   return (
