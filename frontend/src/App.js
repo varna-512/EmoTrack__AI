@@ -9,7 +9,7 @@ import Webcam from "react-webcam";
 import {
   Activity,
   BarChart3,
-  Bell,
+ 
   Brain,
   CalendarDays,
   Camera,
@@ -17,8 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  Download,
-  Dumbbell,
+  
+ 
   FileText,
   Flame,
   Gauge,
@@ -26,19 +26,19 @@ import {
   HelpCircle,
   Home,
   LineChart as LineChartIcon,
-  Lock,
+
   Moon,
-  Music,
+
   Play,
   Search,
-  Settings,
+ 
   ShieldAlert,
   Sparkles,
   Target,
   User,
   Volume2,
   Waves,
-  Wind,
+ 
 } from "lucide-react";
 import {
   Area,
@@ -47,15 +47,9 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
+  
   Pie,
   PieChart,
-  PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
-  Radar,
-  RadarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -630,57 +624,35 @@ function Dashboard({
   onNavigate
 }) {
   const kpis = [
-
   {
     label: "Wellness Score",
-
-    value: dashboardData?.wellness_score || 0,
-
-    suffix: "/100",
-
+    value: "Start Your Assessment",
+    suffix: "",
     icon: HeartPulse,
-
-    tone: "teal"
+    tone: "teal",
   },
-
   {
     label: "Stress Score",
-
-    value:
-      dashboardData?.latest_stress || 0,
-
-    suffix: "/100",
-
+    value: "AI Stress Analysis",
+    suffix: "",
     icon: Gauge,
-
-    tone: "orange"
+    tone: "orange",
   },
-
   {
     label: "Wellness Stability",
-
-    value:
-      dashboardData?.emotional_stability || 0,
-
-    suffix: "%",
-
+    value: "Personalized Insights",
+    suffix: "",
     icon: Activity,
-
-    tone: "indigo"
+    tone: "indigo",
   },
-
   {
     label: "Wellness Trend",
-
-    value:
-      dashboardData?.latest_stress >= 70 ? "High" : dashboardData?.latest_stress >= 40 ? "Moderate" : dashboardData?.total_assessments ? "Low" : "N/A",
-
+    value: "Monitor Your Progress",
     suffix: "",
-
     icon: LineChartIcon,
-
-    tone: "green"
+    tone: "green",
   },
+
 
   {
     label:
@@ -706,7 +678,7 @@ function Dashboard({
           <h2>Your latest wellness status is {primaryEmotion === "Not available" ? "not available yet" : `${primaryEmotion.toLowerCase()} priority`}</h2>
           <p>
             {dashboardData?.total_assessments
-              ? `Last assessment showed ${confidence}% confidence with a ${stressScore}/100 stress score.`
+              ? `Last assessment showed ${confidence}% confidence.`
               : "Run an assessment to build your database-backed dashboard."}
           </p>
         </div>
@@ -1817,46 +1789,33 @@ function RecommendationGrid({ recommendations = [] }) {
   );
 }
 
-function Insights({ trendData, emotionDistribution }) {
+function Insights() {
   return (
     <div className="stack">
-      <section className="analytics-grid two">
-        <ChartPanel title="Weekly Trends">
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="day" />
-              <YAxis hide />
-              <Tooltip />
-              <Area dataKey="mood" stroke="#14b8a6" fill="#14b8a655" strokeWidth={3} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-        <ChartPanel title="Monthly Stress Trends">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={trendData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="day" />
-              <YAxis hide />
-              <Tooltip />
-              <Bar dataKey="stress" fill="#f97316" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-      </section>
-      <section className="insights-grid">
-        
+      <section className="analytics-grid">
         <div className="panel">
-          <p className="eyebrow">AI insights</p>
-          <h3>Patterns worth watching</h3>
+          <p className="eyebrow">Weekly Trends</p>
+          <h3>View Your Weekly Progress</h3>
           <p className="muted">
-            {trendData?.length
-              ? `Latest saved assessment has a ${trendData[trendData.length - 1].stress}/100 stress score.`
-              : "Run assessments to generate database-backed insights."}
+            Weekly wellness analytics will appear here after multiple assessments.
           </p>
         </div>
-      </section>
-      <section className="analytics-grid two">
+
+        <div className="panel">
+          <p className="eyebrow">Monthly Trends</p>
+          <h3>Track Monthly Wellness</h3>
+          <p className="muted">
+            Monthly emotional and stress trends are currently in progress.
+          </p>
+        </div>
+
+        <div className="panel">
+          <p className="eyebrow">AI Insights</p>
+          <h3>Personalized Insights</h3>
+          <p className="muted">
+            AI-generated wellness insights and recommendations will be available soon.
+          </p>
+        </div>
       </section>
     </div>
   );
@@ -1946,8 +1905,8 @@ function Profile() {
   return (
     <div className="profile-grid">
       <div className="panel profile-card">
-        <div className="avatar">V</div>
-        <h2>varsha</h2>
+        <div className="avatar">A</div>
+        <h2>Alex </h2>
  <p>🟢 Active User</p>
 
       </div>

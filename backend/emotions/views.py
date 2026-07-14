@@ -1,3 +1,4 @@
+import json
 from collections import Counter
 
 from django.db.models import Avg
@@ -8,7 +9,7 @@ from rest_framework.response import Response
 from .models import AssessmentResult
 from .services.face_service import get_face_prediction
 from .services.voice_service import get_voice_prediction
-from .services.fusion_service import fuse_emotions
+from .services.fusion_service import average_prediction_results, fuse_emotions
 from .services.text_service import get_text_prediction
 
 def _percent(value):
@@ -41,6 +42,8 @@ def _serialize_assessment(assessment):
         "final_emotion": assessment.final_emotion,
         "confidence": final_confidence,
         "stress_score": assessment.stress_score,
+        "report": {},
+        "recommendations": [],
     }
 
     return {
@@ -64,6 +67,7 @@ def _serialize_assessment(assessment):
         "result": {
             "voice_result": voice_result,
             "face_result": face_result,
+            "text_result": text_result,
             "final_result": final_result,
         },
     }
@@ -79,34 +83,51 @@ class MultimodalPredictionAPIView(APIView):
         # GET FILES FROM FRONTEND
         # =========================
 
-        audio_file = request.FILES.get("audio")
+        audio_files = (
+            request.FILES.getlist("audio") or
+            request.FILES.getlist("audios")
+        )
+        audio_file_1 = request.FILES.get("audio_1")
+        audio_file_2 = request.FILES.get("audio_2")
+        if audio_file_1:
+            audio_files.append(audio_file_1)
+        if audio_file_2:
+            audio_files.append(audio_file_2)
+        if request.FILES.get("audio") and not audio_files:
+            audio_files.append(request.FILES.get("audio"))
 
-        image_file = request.FILES.get("image")
+        image_files = (
+            request.FILES.getlist("image") or
+            request.FILES.getlist("images")
+        )
+        if request.FILES.get("image") and not image_files:
+            image_files.append(request.FILES.get("image"))
         text_input = request.data.get("text")
+        pulse = request.data.get("pulse")
+        questionnaire = _parse_json_field(
+            request.data.get("questionnaire"),
+            {}
+        )
 
         print("\n====================")
         print("MULTIMODAL REQUEST")
         print("====================")
 
-        print("Audio File:", audio_file)
-        print("Image File:", image_file)
+        print("Pulse data:", pulse)
+        print("Audio Files:", len(audio_files))
+        print("Image Files:", len(image_files))
         print("Text:", text_input)
+        print("Questionnaire summary:", questionnaire)
 
         # =========================
         # VALIDATION
         # =========================
 
-        if not audio_file and not image_file and not text_input:
+        if not audio_files and not image_files and not text_input and not questionnaire:
 
             return Response({
-"result": {
-    "voice_result": voice_result,
-    "face_result": face_result,
-    "text_result": text_result,
-    "final_result": final_result,
-},
                 "error":
-                "No audio or image uploaded"
+                "No assessment data uploaded"
 
             })
 
@@ -123,26 +144,32 @@ class MultimodalPredictionAPIView(APIView):
         # VOICE
         # =========================
 
-        if audio_file:
-
-            voice_result = get_voice_prediction(
-                audio_file
+        if audio_files:
+            voice_results = [
+                get_voice_prediction(audio)
+                for audio in audio_files
+            ]
+            voice_result = average_prediction_results(
+                voice_results
             )
 
-            print("\nVOICE RESULT:")
+            print("\nVOICE PROBABILITIES (AVERAGED):")
             print(voice_result)
 
         # =========================
         # FACE
         # =========================
 
-        if image_file:
-
-            face_result = get_face_prediction(
-                image_file
+        if image_files:
+            face_results = [
+                get_face_prediction(image)
+                for image in image_files
+            ]
+            face_result = average_prediction_results(
+                face_results
             )
 
-            print("\nFACE RESULT:")
+            print("\nFACE PROBABILITIES (AVERAGED):")
             print(face_result)
         # =========================
         # text
@@ -154,7 +181,7 @@ class MultimodalPredictionAPIView(APIView):
             text_input
             )
 
-            print("\nTEXT RESULT:")
+            print("\nTEXT PROBABILITIES:")
             print(text_result)
         
         # =========================
@@ -166,12 +193,26 @@ class MultimodalPredictionAPIView(APIView):
             voice_result,
 
             face_result,
-            text_result
+            text_result,
+            pulse=pulse,
+            questionnaire=questionnaire
 
         )
 
-        print("\nFINAL RESULT:")
+        print("\nFUSION CALCULATIONS:")
+        print(final_result.get("final_probabilities", {}))
+        print("\nASSESSMENT PROFILE:")
         print(final_result)
+        print("\nWELLNESS DIMENSIONS:")
+        print(final_result.get("report", {}).get("wellness_dimensions", []))
+        print("\nSELECTED PROFILE:")
+        print(final_result.get("report", {}).get("selected_profile"))
+        print("\nPROFILE SELECTION REASON:")
+        print(final_result.get("report", {}).get("profile_selection_reason"))
+        print("\nGENERATED REPORT:")
+        print(final_result.get("report", {}))
+        print("\nGENERATED RECOMMENDATIONS:")
+        print(final_result.get("recommendations", []))
 
         # =========================
         # SAFE EXTRACTION
@@ -254,7 +295,22 @@ class MultimodalPredictionAPIView(APIView):
             "final_result":
             final_result
 
+            ,
+            "report": final_result.get("report", {}),
+            "recommendations": final_result.get("recommendations", [])
+
         })
+
+
+def _parse_json_field(value, fallback):
+    if not value:
+        return fallback
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return fallback
 
 
 
